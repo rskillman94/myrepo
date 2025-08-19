@@ -1,12 +1,13 @@
 ### Detect Violating WS V2.0 ###
 # Author: Rachel Skillman
 # Date Created: 8/18/25
-# Date Updated: 8/18/25
+# Date Updated: 8/19/25
 
 #TO DO:
-# - Need to get reporting unit to match, and scale this up! Ask Dan
+# - Need to get reporting unit to match - DONE, and scale this up! Ask Dan
 #   - Get UoM from TMNALRA even though MCL is not kept up to date
-
+# - Need to find a system exceeding for more than one analyte to test - use
+# CA0400021 Robinson's Corner MHP - Only Well Facility (001) - and manganese and nitrate
 # - How to get sources and facilities (change the facility id pulled)
 
 #### Set Working Directory ####
@@ -60,9 +61,12 @@ library(purrr) #for loop
 
 #### Set desired information ####
 
-water_system_of_interest <- "CA0110003"
-facility_of_interest <- "014"
-analyte_of_interest <- "1010"
+# water_system_of_interest <- "CA0110003"
+# facility_of_interest <- "014"
+
+water_system_of_interest <- "CA0400021"
+facility_of_interest <- "001"
+analyte_of_interest  <- c("1002", "1005", "1010", "1032", "1040") # MANGANESE IS A SECONDARY
 all_results <- list()
 
 #### Open the Server Connection for SSMS Pulls ####
@@ -87,7 +91,7 @@ tinwsys <- dbGetQuery(con, "SELECT
                         	D_PWS_FED_TYPE_CD
                     FROM [ReportDB].[SDWIS].[TINWSYS]") #does it need to have any other variables
 cat("The SDWIS TINWSYS dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tinwsys), "water systems.\n")
-#The SDWIS TINWSYS dataset queried 08/18/2025 contains 15956 water systems.
+#The SDWIS TINWSYS dataset queried 08/19/2025 contains 15956 water systems.
 
 
 # Query Facility List from SDWIS TINWSF 
@@ -101,7 +105,7 @@ tinwsf <- dbGetQuery(con, "SELECT
                         TINWSYS_IS_NUMBER
                     FROM [ReportDB].[SDWIS].[TINWSF]") 
 cat("The SDWIS TINWSF dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tinwsf), "water systems facilities.\n")
-#The SDWIS TINWSF dataset queried 08/18/2025 contains 70342 water system facilities.
+#The SDWIS TINWSF dataset queried 08/19/2025 contains 70342 water system facilities.
 
 # Query Sample Point List from SDWIS TSASMPPT 
 tsasmppt <- dbGetQuery(con, "SELECT	
@@ -113,6 +117,7 @@ tsasmppt <- dbGetQuery(con, "SELECT
                     FROM [ReportDB].[SDWIS].[TSASMPPT]") 
 cat("The SDWIS TSASMPPT dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tsasmppt), "sample points.\n")
 #The SDWIS TSASMPPT dataset queried 08/18/2025 contains 67659 sample points.
+#The SDWIS TSASMPPT dataset queried 08/19/2025 contains 67663 sample points.
 
 # Query Sample Results from SDWIS TSASAMPL [SAMPLES]
 tsasampl <- dbGetQuery(con, "SELECT 
@@ -125,7 +130,7 @@ tsasampl <- dbGetQuery(con, "SELECT
                     FROM [ReportDB].[SDWIS].[TSASAMPL]") 
 cat("The SDWIS TSASAMPL dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tsasampl), "sample results.\n")
 #The SDWIS TSASAMPL dataset queried 08/18/2025 contains 4576439 sample results.
-
+#The SDWIS TSASAMPL dataset queried 08/19/2025 contains 4577219 sample results.
 
 # Query Sample Analytical Results from SDWIS TSASAR [RESULTS]
 start_time <- Sys.time() # Record the start time
@@ -144,10 +149,11 @@ tsasar <- dbGetQuery(con, "SELECT
                     INNER JOIN [ReportDB].[SDWIS].[TSASAMPL] s
                     ON r.TSASAMPL_IS_NUMBER = s.TSASAMPL_IS_NUMBER
                     WHERE CAST(s.COLLLECTION_END_DT AS DATE) >= CAST(CONCAT(YEAR(GETDATE()) - 5, '-01-01') AS DATE)")
-end_time <- Sys.time() # Record the end time
-execution_time <- end_time - start_time
-print(paste("Query execution time:", execution_time))
+end_time <- Sys.time() # Record the end time 
+execution_time <- end_time - start_time 
+print(paste("Query execution time:", execution_time)) #12.38 minutes
 cat("The SDWIS TSASAR dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tsasar), "sample analytical results.\n")
+#The SDWIS TSASAR dataset queried 08/19/2025 contains 11531655 sample analytical results.
 
 
 # start_time2 <- Sys.time() # Record the start time
@@ -193,7 +199,7 @@ tmnalra <- dbGetQuery(con, "SELECT
                           END_DATE
                        FROM [ReportDB].[SDWIS].[TMNALRA]") #although not up to date, use as a scaffold for the UoM
 cat("The SDWIS TMNALRA dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tmnalra), "analyte level rule assessment.\n")
-#The SDWIS TMNALRA dataset queried 08/18/2025 contains 414 analyte level rule assessment.
+#The SDWIS TMNALRA dataset queried 08/19/2025 contains 414 analyte level rule assessment.
 
 
 #### TABLE 1: Generate the water system of interest	####
@@ -295,10 +301,14 @@ date_range <- tibble(
   distinct(QUARTER) # Get distinct QUARTER values
 
 #Barium
+aluminum <- c("1002", "1.", 1) #1 significant figure - join this with analyte dataframe
 barium <- c("1010", "1.", 1) #1 significant figure - join this with analyte dataframe
 arsenic <- c("1005", "0.010", 2) #2 significant figures - join this with analyte dataframe
 hexchrom <- c("1080", "0.010", 2) #2 significant figures - join this with analyte dataframe
-mcl_list <- rbind(barium, arsenic, hexchrom) %>% as.data.frame() %>% rename(ANALYTE_CODE = 1, MCL = 2, SF = 3) %>% mutate(SF = as.numeric(SF))
+manganese <- c("1032", "0.05", 1) #1 significant figure - join this with analyte dataframe
+nitrate <- c("1040", "10", 1) #1 significant figure - join this with analyte dataframe
+
+mcl_list <- rbind(aluminum, arsenic, barium, hexchrom, manganese, nitrate) %>% as.data.frame() %>% rename(ANALYTE_CODE = 1, MCL = 2, SF = 3) %>% mutate(SF = as.numeric(SF))
 
 analyte_mcl <- analyte %>% left_join(mcl_list)
 
@@ -327,7 +337,7 @@ quarter_table <- water_quality_well %>%
   filter(
     RESULT_SUM > 0,
     FACILITY_ID == facility_of_interest,
-    ANALYTE_CODE == analyte_of_interest
+    ANALYTE_CODE %in% analyte_of_interest
   ) %>%
   # Add new calculated columns
   mutate(
@@ -399,7 +409,8 @@ qtr_result <-  calc_raa %>%
   arrange(desc(QUARTER_SORT)) %>%
   filter(!is.na(QUARTER_MEAN_FINAL)) %>%
   ungroup() %>%
-  slice(1) %>%
+  group_by(ANALYTE_CODE) %>%
+  slice(1) %>% #somehow you need to know how many to slice (or like sort by analyte and always just grab the earliest result?)
   select(-QUARTER_SORT) %>% # Remove the temporary column 
   left_join(analyte_mcl %>% 
               dplyr::select(TSAANLYT_IS_NUMBER, ANALYTE_CODE, MCL)) %>% 
@@ -407,8 +418,45 @@ qtr_result <-  calc_raa %>%
          TSAANLYT_IS_NUMBER = as.numeric((TSAANLYT_IS_NUMBER))) %>%
   left_join(tmnalra %>% 
               mutate(THRESHOLD_TYPE_CD = str_trim(THRESHOLD_TYPE_CD)) %>%
-              filter(THRESHOLD_TYPE_CD == "MCL" )%>% 
+              filter(THRESHOLD_TYPE_CD == "MCL" ) %>%  
+              group_by(TSAANLYT_IS_NUMBER) %>% # group by analyte
+              slice_max(order_by = BEGIN_DATE, n = 1, with_ties = FALSE) %>% #if you use TMNALRA for MCL/SF --> make sure you take the latest date
               dplyr::select(TSAANLYT_IS_NUMBER, UOM_MCL = UOM_CODE)) %>%
-  left_join(water_quality_well %>% dplyr::select(TSAANLYT_IS_NUMBER, RESULT_REPORTING_UNIT))
-  mutate(MCL_num = as.numeric(MCL), exceed = ifelse(RAA > MCL_num, 1, 0))
+  left_join(water_quality_well %>% dplyr::select(TSAANLYT_IS_NUMBER, RESULT_REPORTING_UNIT) %>% distinct())
 
+#### CONVERT UOM ####
+  
+convert_units <- function(value, from, to) {
+  # standardize text
+  from <- toupper(trimws(from))
+  to   <- toupper(trimws(to))
+  
+  # no conversion needed
+  if (from == to) return(value)
+  
+  # mg/L ↔ ug/L
+  if (from == "MG/L" && to == "UG/L") return(value * 1000)
+  if (from == "UG/L" && to == "MG/L") return(value / 1000)
+  
+  # ug/L ↔ ng/L
+  if (from == "UG/L" && to == "NG/L") return(value * 1000)
+  if (from == "NG/L" && to == "UG/L") return(value / 1000)
+  
+  # mg/L ↔ ng/L
+  if (from == "MG/L" && to == "NG/L") return(value * 1e6)
+  if (from == "NG/L" && to == "MG/L") return(value / 1e6)
+  
+  stop(paste("Conversion not implemented for", from, "to", to))
+}
+
+  
+#### Convert MCL Units ####
+qtr_result_uom <- qtr_result %>% mutate(MCL_NUM = as.numeric(MCL)) #I'm definitely messing up SF here - when to convert? But once you get it right it should be fine
+qtr_result_uom$MCL_converted <- mapply(convert_units, 
+                           value = qtr_result_uom$MCL_NUM, 
+                           from  = qtr_result_uom$UOM_MCL, 
+                           to    = qtr_result_uom$RESULT_REPORTING_UNIT)
+
+#### Flag violations ####
+qtr_result_violation <- qtr_result_uom %>% 
+  mutate(exceed = ifelse(RAA > MCL_converted, 1, 0))
