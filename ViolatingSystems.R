@@ -1,14 +1,14 @@
 ### Detect Violating WS V2.0 ###
 # Author: Rachel Skillman
 # Date Created: 8/18/25
-# Date Updated: 8/19/25
+# Date Updated: 8/26/25
 
 #TO DO:
-# - Need to get reporting unit to match - DONE, and scale this up! Ask Dan
 #   - Get UoM from TMNALRA even though MCL is not kept up to date
 # - Need to find a system exceeding for more than one analyte to test - use
 # CA0400021 Robinson's Corner MHP - Only Well Facility (001) - and manganese and nitrate
-# - How to get sources and facilities (change the facility id pulled)
+# - What should you do today? Maybe go look at the code Dan sent you for mDWW to do sources...
+# - Could try and use that table to see if you can get more stuff out of it? like the MCL so you don't have to do it manually 
 
 #### Set Working Directory ####
 
@@ -66,7 +66,28 @@ library(purrr) #for loop
 
 water_system_of_interest <- "CA0400021"
 facility_of_interest <- "001"
-analyte_of_interest  <- c("1002", "1005", "1010", "1032", "1040") # MANGANESE IS A SECONDARY
+primary_analyte_of_interest  <- c("1002", #Aluminum 1. mg/L [1 sf]
+                                  "1074", #Antimony 0.006 mg/L [1 sf]
+                                  "1005", #Arsenic 0.010 mg/L [2 sf]
+                                  "1094", #Asbestos 7 MFL [1 sf]
+                                  "1010", #Barium 1. mg/L [1 sf]
+                                  "1075", #Beryllium 0.004 mg/L [1 sf]
+                                  "1015", #Cadmium 0.005 mg/L [1 sf]
+                                  "1080", #Chromium (hexavalent) 0.010 mg/L [2 sf]
+                                  "1020", #Chromium (total) 0.05 mg/L [1 sf]
+                                  "1024", #Cyanide 0.15 mg/L [2 sf]
+                                  "1025", #Fluoride 2.0 mg/L [2 sf] ,
+                                  "1035", #Mercury 0.002 mg/L [1 sf]
+                                  "1036", #Nickel 0.1 mg/L [1 sf]
+                                  "1040", #Nitrate 10. mg/L [1 sf]
+                                  "1038", #Nitrate + Nitrite 10. mg/L [1 sf]
+                                  "1041", #Nitrite 1. mg/L [1 sf]
+                                  "1039", #Perchlorate 0.006 mg/L [1 sf]
+                                  "1045", #Selenium 0.05 mg/L [1 sf]
+                                  "1085") #Thallium 0.002 mg/L [1 sf]
+
+secondary_analyte_of_interest  <- c("1032") #Manganese
+
 all_results <- list()
 
 #### Open the Server Connection for SSMS Pulls ####
@@ -92,7 +113,7 @@ tinwsys <- dbGetQuery(con, "SELECT
                     FROM [ReportDB].[SDWIS].[TINWSYS]") #does it need to have any other variables
 cat("The SDWIS TINWSYS dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tinwsys), "water systems.\n")
 #The SDWIS TINWSYS dataset queried 08/19/2025 contains 15956 water systems.
-
+#The SDWIS TINWSYS dataset queried 08/25/2025 contains 15957 water systems.
 
 # Query Facility List from SDWIS TINWSF 
 tinwsf <- dbGetQuery(con, "SELECT 
@@ -106,6 +127,13 @@ tinwsf <- dbGetQuery(con, "SELECT
                     FROM [ReportDB].[SDWIS].[TINWSF]") 
 cat("The SDWIS TINWSF dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tinwsf), "water systems facilities.\n")
 #The SDWIS TINWSF dataset queried 08/19/2025 contains 70342 water system facilities.
+#The SDWIS TINWSF dataset queried 08/25/2025 contains 70347 water systems facilities.
+
+# Query Facility List from SDWIS TINWSF 
+tinwsff <- dbGetQuery(con, "SELECT *
+                    FROM [ReportDB].[SDWIS].[TINWSFF]") 
+cat("The SDWIS TINWSFF dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tinwsff), "water systems facilities flow paths.\n")
+#The SDWIS TINWSFF dataset queried 08/26/2025 contains 30442 water systems facilities flow paths.
 
 # Query Sample Point List from SDWIS TSASMPPT 
 tsasmppt <- dbGetQuery(con, "SELECT	
@@ -118,6 +146,8 @@ tsasmppt <- dbGetQuery(con, "SELECT
 cat("The SDWIS TSASMPPT dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tsasmppt), "sample points.\n")
 #The SDWIS TSASMPPT dataset queried 08/18/2025 contains 67659 sample points.
 #The SDWIS TSASMPPT dataset queried 08/19/2025 contains 67663 sample points.
+#The SDWIS TSASMPPT dataset queried 08/25/2025 contains 67670 sample points.
+
 
 # Query Sample Results from SDWIS TSASAMPL [SAMPLES]
 tsasampl <- dbGetQuery(con, "SELECT 
@@ -131,6 +161,7 @@ tsasampl <- dbGetQuery(con, "SELECT
 cat("The SDWIS TSASAMPL dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tsasampl), "sample results.\n")
 #The SDWIS TSASAMPL dataset queried 08/18/2025 contains 4576439 sample results.
 #The SDWIS TSASAMPL dataset queried 08/19/2025 contains 4577219 sample results.
+#The SDWIS TSASAMPL dataset queried 08/25/2025 contains 4579967 sample results.
 
 # Query Sample Analytical Results from SDWIS TSASAR [RESULTS]
 start_time <- Sys.time() # Record the start time
@@ -154,7 +185,7 @@ execution_time <- end_time - start_time
 print(paste("Query execution time:", execution_time)) #12.38 minutes
 cat("The SDWIS TSASAR dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tsasar), "sample analytical results.\n")
 #The SDWIS TSASAR dataset queried 08/19/2025 contains 11531655 sample analytical results.
-
+#The SDWIS TSASAR dataset queried 08/25/2025 contains 11557152 sample analytical results.
 
 # start_time2 <- Sys.time() # Record the start time
 # tsasar2 <- dbGetQuery(con, "SELECT 
@@ -182,7 +213,7 @@ tsaanlyt <- dbGetQuery(con, "SELECT
                           CODE
                        FROM [ReportDB].[SDWIS].[TSAANLYT]") 
 cat("The SDWIS TSAANLYT dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tsaanlyt), "analytes.\n")
-#The SDWIS TSAANLYT dataset queried 08/18/2025 contains 1059 analytes.
+#The SDWIS TSAANLYT dataset queried 08/25/2025 contains 1059 analytes.
 
 
 
@@ -199,18 +230,138 @@ tmnalra <- dbGetQuery(con, "SELECT
                           END_DATE
                        FROM [ReportDB].[SDWIS].[TMNALRA]") #although not up to date, use as a scaffold for the UoM
 cat("The SDWIS TMNALRA dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tmnalra), "analyte level rule assessment.\n")
-#The SDWIS TMNALRA dataset queried 08/19/2025 contains 414 analyte level rule assessment.
+#The SDWIS TMNALRA dataset queried 08/25/2025 contains 414 analyte level rule assessment.
+
+#### TABLE 1: Generate the analyte list and date list ####
+
+analyte <- tsaanlyt %>% rename(ANALYTE_NAME = NAME, ANALYTE_CODE = CODE)
+
+aluminum <- c("1002", "1.", 1) #1 significant figure - join this with analyte dataframe
+antimony <- c("1074", "0.006", 1) #1 significant figure - join this with analyte dataframe
+arsenic <- c("1005", "0.010", 2) #2 significant figures - join this with analyte dataframe
+asbestos <- c("1094", "7", 1) #2 significant figures - join this with analyte dataframe
+barium <- c("1010", "1.", 1) #1 significant figure - join this with analyte dataframe
+beryllium <- c("1075", "0.004", 1) #1 significant figure - join this with analyte dataframe
+cadmium <- c("1015", "0.005", 1) #1 significant figure - join this with analyte dataframe
+hexchrom <- c("1080", "0.010", 2) #2 significant figures - join this with analyte dataframe
+chromium <- c("1020", "0.05", 1) #1 significant figure - join this with analyte dataframe
+cyanide <- c("1024", "0.15", 2) #2 significant figures - join this with analyte dataframe
+fluoride <- c("1025", "2.0", 2) #2 significant figures - join this with analyte dataframe
+mercury <- c("1035", "0.002", 1) #1 significant figure - join this with analyte dataframe
+nickel <- c("1036", "0.1", 1) #1 significant figure - join this with analyte dataframe
+nitrate <- c("1040", "10", 1) #1 significant figure - join this with analyte dataframe
+nitrite <- c("1041", "1.", 1) #1 significant figure - join this with analyte dataframe
+nitratenitrite <- c("1038", "10.", 1) #1 significant figure - join this with analyte dataframe
+perchlorate <- c("1039", "0.006", 1) #1 significant figure - join this with analyte dataframe
+selenium <- c("1045", "0.05", 1) #1 significant figure - join this with analyte dataframe
+thallium <- c("1085", "0.002", 1) #1 significant figure - join this with analyte dataframe
+
+#manganese <- c("1032", "0.05", 1) #1 significant figure - join this with analyte dataframe
+
+mcl_list <- rbind(aluminum, 
+                  antimony, 
+                  arsenic, 
+                  asbestos,
+                  barium, 
+                  beryllium,
+                  cadmium,
+                  hexchrom, 
+                  chromium,
+                  cyanide,
+                  fluoride,
+                  mercury,
+                  nickel, 
+                  nitrate,
+                  nitrite,
+                  nitratenitrite,
+                  perchlorate,
+                  selenium,
+                  thallium) %>% 
+  as.data.frame() %>% 
+  rename(ANALYTE_CODE = 1, MCL = 2, SF = 3) %>% 
+  mutate(SF = as.numeric(SF))
+
+analyte_mcl <- analyte %>% left_join(mcl_list)
+
+# Generate DATE_RANGE equivalent in R (covering the last 5 years)
+date_range <- tibble(
+  dtDate = seq.Date(
+    from = as.Date(paste0(year(Sys.Date()) - 5, "-01-01")),
+    to = Sys.Date(),
+    by = "day"
+  )
+) %>%
+  mutate(
+    QUARTER = paste0(year(dtDate), "-", quarter(dtDate)) # Create Year-Quarter string
+  ) %>%
+  distinct(QUARTER) # Get distinct QUARTER values
 
 
-#### TABLE 1: Generate the water system of interest	####
+#### TABLE 2: Generate the water system of interest	####
 
 water_system_inventory <- tinwsys %>% 
   
   # Remove any trailing or leading white space from NUMBER0 field
-  mutate(NUMBER0 = str_trim(NUMBER0)) %>% 
+  mutate(NUMBER0 = str_trim(NUMBER0),
+         D_PWS_FED_TYPE_CD = str_trim(D_PWS_FED_TYPE_CD)) %>% 
   
   # Select water system of interest
-  filter(NUMBER0 == water_system_of_interest) %>%
+  #filter(NUMBER0 == water_system_of_interest) %>%
+  
+  # Rename columns (aligns with DL's SQL code)
+  rename(
+    PWSID = NUMBER0, 
+    WATER_SYSTEM_NAME = NAME, 
+    WATER_SYSTEM_STATUS = ACTIVITY_STATUS_CD,
+    POPULATION = D_POPULATION_COUNT,
+    FEDERAL_WATER_SYSTEM_TYPE = D_PWS_FED_TYPE_CD
+  ) %>%
+  
+  # Change A --> ACTIVE and otherwise make it N/A in WATER_SYSTEM_STATUS field
+  mutate(WATER_SYSTEM_STATUS = ifelse(WATER_SYSTEM_STATUS == "A", "ACTIVE", NA)) %>%
+  
+  #just for fun, filter to active community WS only so it's easier to try and expand
+  filter(FEDERAL_WATER_SYSTEM_TYPE == "C",
+         WATER_SYSTEM_STATUS == "ACTIVE") #2822 if filtered to active CWS 
+
+
+#### TABLE 3: Count WS Facilities ####
+
+active_facilities_count <- tinwsf %>% 
+  mutate(WATER_TYPE_CODE = str_trim(WATER_TYPE_CODE)) %>% # Remove any trailing or leading from WATER_TYPE_CODE
+  inner_join(water_system_inventory,
+             by = c("TINWSYS_IS_NUMBER")) %>%
+  filter(ACTIVITY_STATUS_CD == "A") %>% #active facilities
+  group_by(PWSID, TINWSYS_IS_NUMBER) %>%
+  summarise(
+    n_active_facilities = n(),
+    all_type_codes = paste(unique(TYPE_CODE), collapse = ", "), # concatenate unique TYPE_CODEs
+    .groups = "drop"
+  ) %>%
+  mutate(
+    no_TP = if_else(str_detect(all_type_codes, "TP"), 0L, 1L) # dummy: 1 if TP is missing
+  )
+
+# Find PWSIDs 
+dswl <- active_facilities_count %>%
+  filter(all_type_codes %in% c("DS, WL", "WL, DS")) %>% #even if you have multiple wells, it combines into one - at this point what if you just looked at any system with no TP?
+  pull(PWSID)
+notp <- active_facilities_count %>%
+  filter(no_TP == 1) %>% 
+  pull(PWSID)
+
+#### TABLE 1.75: Generate the water system of interest	####
+
+water_system_inventory <- tinwsys %>% 
+  
+  # Remove any trailing or leading white space from NUMBER0 field
+  mutate(NUMBER0 = str_trim(NUMBER0),
+         D_PWS_FED_TYPE_CD = str_trim(D_PWS_FED_TYPE_CD)) %>% 
+  
+  # Select water system of interest
+  #filter(NUMBER0 %in% dswl) %>%
+  filter(NUMBER0 %in% notp) %>%
+  
   
   # Rename columns (align's with DL's SQL code)
   rename(
@@ -222,7 +373,12 @@ water_system_inventory <- tinwsys %>%
   ) %>%
   
   # Change A --> ACTIVE and otherwise make it N/A in WATER_SYSTEM_STATUS field
-  mutate(WATER_SYSTEM_STATUS = ifelse(WATER_SYSTEM_STATUS == "A", "ACTIVE", NA))
+  mutate(WATER_SYSTEM_STATUS = ifelse(WATER_SYSTEM_STATUS == "A", "ACTIVE", NA)) %>%
+  
+  #just for fun, filter to active community WS only so it's easier to try and expand
+  filter(FEDERAL_WATER_SYSTEM_TYPE == "C",
+         WATER_SYSTEM_STATUS == "ACTIVE")
+
 
 
 #### TABLE 2: Generates the facilities of interest ####
@@ -240,7 +396,51 @@ water_system_sources <- tinwsf %>%
     FACILITY_WATER_TYPE_CODE = WATER_TYPE_CODE
   ) %>%
   mutate(FACILITY_STATUS = ifelse(FACILITY_STATUS == "A", "ACTIVE", NA))
+#Also use D_SOURCE_CD  - do it two different ways to see what happens
+#remember the wells that are not sources
 
+#### TABLE 2.5: Figure out which sources are "starting points" ####
+
+startpts <- water_system_sources %>% 
+  left_join(tinwsff %>% dplyr::select(TINWSF_IS_NUMBER, TINWSF0IS_NUMBER)) %>%
+  filter(is.na(TINWSF0IS_NUMBER)) %>%
+  dplyr::select(!c(TINWSF0IS_NUMBER))
+
+# build graph from edges
+g <- igraph::graph_from_data_frame(
+  d = tinwsff %>% select(from = TINWSF0IS_NUMBER, to = TINWSF_IS_NUMBER),
+  vertices = tinwsf %>% select(TINWSF_IS_NUMBER, TINWSYS_IS_NUMBER),
+  directed = TRUE
+)
+
+# find sources = nodes with no incoming edges
+sources <- igraph::V(g)[igraph::degree(g, mode = "in") == 0]
+
+# function to get paths from one source
+get_paths <- function(source) {
+  # shortest_paths will actually give *all* simple paths to sinks
+  sinks <- igraph::V(g)[igraph::degree(g, mode = "out") == 0]
+  all_paths <- all_simple_paths(igraph::g, from = source, to = sinks)
+  
+  # turn each path into a data frame
+  df_list <- lapply(seq_along(all_paths), function(i) {
+    tibble(
+      Path_ID = paste0(source$name, "_", i),
+      Step = seq_along(all_paths[[i]]),
+      Facility_ID = names(all_paths[[i]])
+    )
+  })
+  bind_rows(df_list)
+}
+
+# apply to all sources
+flow_paths <- purrr::map_df(sources, get_paths)
+
+flow_path_pwsid <- flow_paths %>% 
+  mutate(TINWSF_IS_NUMBER = as.numeric(Facility_ID)) %>%
+  left_join(tinwsf)
+
+#detach("package:igraph", unload = TRUE)
 
 #### TABLE 3: Generates the sample points ####
 
@@ -266,6 +466,7 @@ samples <- tsasampl %>% filter(COMPL_PURP_IND_CD == "Y", #keep only samples for 
   rename(SAMPLE_DATE = COLLLECTION_END_DT) 
 
 #### TABLE 5: Generates the sampling results data (run this after running samples) ####
+
 results <- tsasar %>% rename(RESULT = CONCENTRATION_MSR, RESULT_REPORTING_UNIT = UOM_CODE) %>%
   filter(str_detect(D_INITIAL_USERID, "ADMIN|FINDING|CLIP1\\.0"),
          DATA_QTY_RSN_CD == "  ") %>% #3 spaces is how it reads in R but also could maybe just str_detect 2 spaces?
@@ -300,22 +501,59 @@ date_range <- tibble(
   ) %>%
   distinct(QUARTER) # Get distinct QUARTER values
 
-#Barium
 aluminum <- c("1002", "1.", 1) #1 significant figure - join this with analyte dataframe
-barium <- c("1010", "1.", 1) #1 significant figure - join this with analyte dataframe
+antimony <- c("1074", "0.006", 1) #1 significant figure - join this with analyte dataframe
 arsenic <- c("1005", "0.010", 2) #2 significant figures - join this with analyte dataframe
+asbestos <- c("1094", "7", 1) #2 significant figures - join this with analyte dataframe
+barium <- c("1010", "1.", 1) #1 significant figure - join this with analyte dataframe
+beryllium <- c("1075", "0.004", 1) #1 significant figure - join this with analyte dataframe
+cadmium <- c("1015", "0.005", 1) #1 significant figure - join this with analyte dataframe
 hexchrom <- c("1080", "0.010", 2) #2 significant figures - join this with analyte dataframe
-manganese <- c("1032", "0.05", 1) #1 significant figure - join this with analyte dataframe
+chromium <- c("1020", "0.05", 1) #1 significant figure - join this with analyte dataframe
+cyanide <- c("1024", "0.15", 2) #2 significant figures - join this with analyte dataframe
+fluoride <- c("1025", "2.0", 2) #2 significant figures - join this with analyte dataframe
+mercury <- c("1035", "0.002", 1) #1 significant figure - join this with analyte dataframe
+nickel <- c("1036", "0.1", 1) #1 significant figure - join this with analyte dataframe
 nitrate <- c("1040", "10", 1) #1 significant figure - join this with analyte dataframe
+nitrite <- c("1041", "1.", 1) #1 significant figure - join this with analyte dataframe
+nitratenitrite <- c("1038", "10.", 1) #1 significant figure - join this with analyte dataframe
+perchlorate <- c("1039", "0.006", 1) #1 significant figure - join this with analyte dataframe
+selenium <- c("1045", "0.05", 1) #1 significant figure - join this with analyte dataframe
+thallium <- c("1085", "0.002", 1) #1 significant figure - join this with analyte dataframe
 
-mcl_list <- rbind(aluminum, arsenic, barium, hexchrom, manganese, nitrate) %>% as.data.frame() %>% rename(ANALYTE_CODE = 1, MCL = 2, SF = 3) %>% mutate(SF = as.numeric(SF))
+#manganese <- c("1032", "0.05", 1) #1 significant figure - join this with analyte dataframe
+
+mcl_list <- rbind(aluminum, 
+                  antimony, 
+                  arsenic, 
+                  asbestos,
+                  barium, 
+                  beryllium,
+                  cadmium,
+                  hexchrom, 
+                  chromium,
+                  cyanide,
+                  fluoride,
+                  mercury,
+                  nickel, 
+                  nitrate,
+                  nitrite,
+                  nitratenitrite,
+                  perchlorate,
+                  selenium,
+                  thallium
+                  ) %>% 
+  as.data.frame() %>% 
+  rename(ANALYTE_CODE = 1, MCL = 2, SF = 3) %>% 
+  mutate(SF = as.numeric(SF))
 
 analyte_mcl <- analyte %>% left_join(mcl_list)
 
 #### TABLE 7: Generate the water quality well ####
 
 water_quality_well <- water_system_inventory %>% 
-  left_join(water_system_sources) %>% 
+  #left_join(water_system_sources) %>% 
+  left_join(startpts) %>%
   left_join(sample_points) %>% 
   left_join(samples) %>%
   left_join(results) %>%
@@ -337,7 +575,7 @@ quarter_table <- water_quality_well %>%
   filter(
     RESULT_SUM > 0,
     FACILITY_ID == facility_of_interest,
-    ANALYTE_CODE %in% analyte_of_interest
+    ANALYTE_CODE %in% primary_analyte_of_interest
   ) %>%
   # Add new calculated columns
   mutate(
@@ -365,6 +603,7 @@ quarter_table <- water_quality_well %>%
 #### TABLE 9: Generate the quarter table pre ####
 
 # Left join the expanded table with the original data to "fill in" missing rows
+# WON'T WORK WITH THE iGRAPH package! somthing about crossing()
 quarter_table_pre <- quarter_table %>%
   distinct(PWSID, POPULATION, FACILITY_ID, ANALYTE_NAME, ANALYTE_CODE) %>% # Get unique combinations
   crossing(date_range) %>% # Add all QUARTER values from `date_range`
@@ -373,10 +612,10 @@ quarter_table_pre <- quarter_table %>%
     QUARTER_MEAN_FINAL = coalesce(QUARTER_MEAN_FINAL, NA_real_), # Fill missing QUARTER_MEAN with NA
     QUARTER_MEAN_COUNT = coalesce(QUARTER_MEAN_COUNT, NA_real_) # Fill missing QUARTER_MEAN_COUNT with NA
   ) %>%
-  select(PWSID, POPULATION, FACILITY_ID, ANALYTE_NAME, ANALYTE_CODE, QUARTER, QUARTER_MEAN_FINAL, QUARTER_MEAN_COUNT) %>%
+  dplyr::select(PWSID, POPULATION, FACILITY_ID, ANALYTE_NAME, ANALYTE_CODE, QUARTER, QUARTER_MEAN_FINAL, QUARTER_MEAN_COUNT) %>%
   group_by(FACILITY_ID, ANALYTE_NAME, ANALYTE_CODE) %>%
   arrange(QUARTER, .by_group = TRUE) %>% # Sort within each group by QUARTER
-  mutate(RN = row_number()) %>%          # Add a row number for each group
+  dplyr::mutate(RN = row_number()) %>%          # Add a row number for each group
   ungroup()                              # Ungroup after the operation
 
 max_row_number <- quarter_table_pre %>% group_by(FACILITY_ID, ANALYTE_NAME) %>%
@@ -403,7 +642,6 @@ calc_raa <- quarter_table_pre %>%
   )
 
 #### TABLE 11: Find the most recent quartet with RAA ####
-
 qtr_result <-  calc_raa %>%
   mutate(QUARTER_SORT = as.numeric(gsub("-", ".", QUARTER))) %>%  # Convert QUARTER to numeric for sorting
   arrange(desc(QUARTER_SORT)) %>%
@@ -422,7 +660,9 @@ qtr_result <-  calc_raa %>%
               group_by(TSAANLYT_IS_NUMBER) %>% # group by analyte
               slice_max(order_by = BEGIN_DATE, n = 1, with_ties = FALSE) %>% #if you use TMNALRA for MCL/SF --> make sure you take the latest date
               dplyr::select(TSAANLYT_IS_NUMBER, UOM_MCL = UOM_CODE)) %>%
-  left_join(water_quality_well %>% dplyr::select(TSAANLYT_IS_NUMBER, RESULT_REPORTING_UNIT) %>% distinct())
+  left_join(water_quality_well %>% dplyr::select(TSAANLYT_IS_NUMBER, RESULT_REPORTING_UNIT)  %>%
+              filter(str_trim(RESULT_REPORTING_UNIT) != "") %>% 
+              distinct()) #why are there 17? aren't there like 599 water systems? Maybe most of them are doing okay?
 
 #### CONVERT UOM ####
   
@@ -459,4 +699,4 @@ qtr_result_uom$MCL_converted <- mapply(convert_units,
 
 #### Flag violations ####
 qtr_result_violation <- qtr_result_uom %>% 
-  mutate(exceed = ifelse(RAA > MCL_converted, 1, 0))
+  mutate(exceed = ifelse(RAA > MCL_converted, 1, 0)) #seems to be working reasonably well 
