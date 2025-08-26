@@ -7,7 +7,6 @@
 #   - Get UoM from TMNALRA even though MCL is not kept up to date
 # - Need to find a system exceeding for more than one analyte to test - use
 # CA0400021 Robinson's Corner MHP - Only Well Facility (001) - and manganese and nitrate
-# - What should you do today? Maybe go look at the code Dan sent you for mDWW to do sources...
 # - Could try and use that table to see if you can get more stuff out of it? like the MCL so you don't have to do it manually 
 
 #### Set Working Directory ####
@@ -232,6 +231,42 @@ tmnalra <- dbGetQuery(con, "SELECT
 cat("The SDWIS TMNALRA dataset queried", format(Sys.Date(), "%m/%d/%Y"), "contains", nrow(tmnalra), "analyte level rule assessment.\n")
 #The SDWIS TMNALRA dataset queried 08/25/2025 contains 414 analyte level rule assessment.
 
+#### Function to round for significant figures ####
+
+# Define a custom rounding function for significant figures
+round_to_sf <- function(value, sig_figs) {
+  if (is.na(value) || is.na(sig_figs) || sig_figs <= 0) {
+    return(NA)
+  }
+  round(value, digits = sig_figs - ceiling(log10(abs(value))))
+}
+
+#### Function to convert UOM ####
+
+convert_units <- function(value, from, to) {
+  # standardize text
+  from <- toupper(trimws(from))
+  to   <- toupper(trimws(to))
+  
+  # no conversion needed
+  if (from == to) return(value)
+  
+  # mg/L ↔ ug/L
+  if (from == "MG/L" && to == "UG/L") return(value * 1000)
+  if (from == "UG/L" && to == "MG/L") return(value / 1000)
+  
+  # ug/L ↔ ng/L
+  if (from == "UG/L" && to == "NG/L") return(value * 1000)
+  if (from == "NG/L" && to == "UG/L") return(value / 1000)
+  
+  # mg/L ↔ ng/L
+  if (from == "MG/L" && to == "NG/L") return(value * 1e6)
+  if (from == "NG/L" && to == "MG/L") return(value / 1e6)
+  
+  stop(paste("Conversion not implemented for", from, "to", to))
+}
+
+
 #### TABLE 1: Generate the analyte list and date list ####
 
 analyte <- tsaanlyt %>% rename(ANALYTE_NAME = NAME, ANALYTE_CODE = CODE)
@@ -297,40 +332,35 @@ date_range <- tibble(
   distinct(QUARTER) # Get distinct QUARTER values
 
 
-#### TABLE 2: Generate the water system of interest	####
-
-water_system_inventory <- tinwsys %>% 
-  
-  # Remove any trailing or leading white space from NUMBER0 field
-  mutate(NUMBER0 = str_trim(NUMBER0),
-         D_PWS_FED_TYPE_CD = str_trim(D_PWS_FED_TYPE_CD)) %>% 
-  
-  # Select water system of interest
-  #filter(NUMBER0 == water_system_of_interest) %>%
-  
-  # Rename columns (aligns with DL's SQL code)
-  rename(
-    PWSID = NUMBER0, 
-    WATER_SYSTEM_NAME = NAME, 
-    WATER_SYSTEM_STATUS = ACTIVITY_STATUS_CD,
-    POPULATION = D_POPULATION_COUNT,
-    FEDERAL_WATER_SYSTEM_TYPE = D_PWS_FED_TYPE_CD
-  ) %>%
-  
-  # Change A --> ACTIVE and otherwise make it N/A in WATER_SYSTEM_STATUS field
-  mutate(WATER_SYSTEM_STATUS = ifelse(WATER_SYSTEM_STATUS == "A", "ACTIVE", NA)) %>%
-  
-  #just for fun, filter to active community WS only so it's easier to try and expand
-  filter(FEDERAL_WATER_SYSTEM_TYPE == "C",
-         WATER_SYSTEM_STATUS == "ACTIVE") #2822 if filtered to active CWS 
-
-
-#### TABLE 3: Count WS Facilities ####
+#### TABLE 2: Count WS Facilities ####
 
 active_facilities_count <- tinwsf %>% 
   mutate(WATER_TYPE_CODE = str_trim(WATER_TYPE_CODE)) %>% # Remove any trailing or leading from WATER_TYPE_CODE
-  inner_join(water_system_inventory,
-             by = c("TINWSYS_IS_NUMBER")) %>%
+  inner_join(tinwsys %>% 
+               
+               # Remove any trailing or leading white space from NUMBER0 field
+               mutate(NUMBER0 = str_trim(NUMBER0),
+                      D_PWS_FED_TYPE_CD = str_trim(D_PWS_FED_TYPE_CD)) %>% 
+               
+               # Select water system of interest
+               #filter(NUMBER0 == water_system_of_interest) %>%
+               
+               # Rename columns (aligns with DL's SQL code)
+               rename(
+                 PWSID = NUMBER0, 
+                 WATER_SYSTEM_NAME = NAME, 
+                 WATER_SYSTEM_STATUS = ACTIVITY_STATUS_CD,
+                 POPULATION = D_POPULATION_COUNT,
+                 FEDERAL_WATER_SYSTEM_TYPE = D_PWS_FED_TYPE_CD
+               ) %>%
+               
+               # Change A --> ACTIVE and otherwise make it N/A in WATER_SYSTEM_STATUS field
+               mutate(WATER_SYSTEM_STATUS = ifelse(WATER_SYSTEM_STATUS == "A", "ACTIVE", NA)) %>%
+               
+               #just for fun, filter to active community WS only so it's easier to try and expand
+               filter(FEDERAL_WATER_SYSTEM_TYPE == "C",
+                      WATER_SYSTEM_STATUS == "ACTIVE") #2822 if filtered to active CWS 
+             ) %>%
   filter(ACTIVITY_STATUS_CD == "A") %>% #active facilities
   group_by(PWSID, TINWSYS_IS_NUMBER) %>%
   summarise(
@@ -350,9 +380,9 @@ notp <- active_facilities_count %>%
   filter(no_TP == 1) %>% 
   pull(PWSID)
 
-#### TABLE 1.75: Generate the water system of interest	####
+#### TABLE 3: Generate water systems of interest with no TP	####
 
-water_system_inventory <- tinwsys %>% 
+water_system_inventory_notp <- tinwsys %>% 
   
   # Remove any trailing or leading white space from NUMBER0 field
   mutate(NUMBER0 = str_trim(NUMBER0),
@@ -363,7 +393,7 @@ water_system_inventory <- tinwsys %>%
   filter(NUMBER0 %in% notp) %>%
   
   
-  # Rename columns (align's with DL's SQL code)
+  # Rename columns (aligns with DL's SQL code)
   rename(
     PWSID = NUMBER0, 
     WATER_SYSTEM_NAME = NAME, 
@@ -380,8 +410,7 @@ water_system_inventory <- tinwsys %>%
          WATER_SYSTEM_STATUS == "ACTIVE")
 
 
-
-#### TABLE 2: Generates the facilities of interest ####
+#### TABLE 4: Generates the facilities of interest ####
 
 water_system_sources <- tinwsf %>%
   filter(
@@ -399,12 +428,15 @@ water_system_sources <- tinwsf %>%
 #Also use D_SOURCE_CD  - do it two different ways to see what happens
 #remember the wells that are not sources
 
-#### TABLE 2.5: Figure out which sources are "starting points" ####
+#### TABLE 5: Generates "Starting Point" sources ####
 
 startpts <- water_system_sources %>% 
   left_join(tinwsff %>% dplyr::select(TINWSF_IS_NUMBER, TINWSF0IS_NUMBER)) %>%
   filter(is.na(TINWSF0IS_NUMBER)) %>%
   dplyr::select(!c(TINWSF0IS_NUMBER))
+
+
+#### TABLE 6: Generate flow path ####
 
 # build graph from edges
 g <- igraph::graph_from_data_frame(
@@ -436,13 +468,14 @@ get_paths <- function(source) {
 # apply to all sources
 flow_paths <- purrr::map_df(sources, get_paths)
 
+# join with additional water system information
 flow_path_pwsid <- flow_paths %>% 
   mutate(TINWSF_IS_NUMBER = as.numeric(Facility_ID)) %>%
   left_join(tinwsf)
 
 #detach("package:igraph", unload = TRUE)
 
-#### TABLE 3: Generates the sample points ####
+#### TABLE 7: Generates the sample points ####
 
 sample_points <- tsasmppt %>%
   filter(
@@ -457,7 +490,7 @@ sample_points <- tsasmppt %>%
   mutate(SAMPLE_POINT_STATUS = ifelse(SAMPLE_POINT_STATUS == "A", "ACTIVE", NA))
 
 
-#### TABLE 4: Generates the samples ####
+#### TABLE 8: Generates the samples ####
 
 samples <- tsasampl %>% filter(COMPL_PURP_IND_CD == "Y", #keep only samples for compliance purposes
                                !TYPE_CODE == "FB", #drop any remaining field blank samples #doesn't actually do anything, assuming compliance purpose filter works correctly
@@ -465,7 +498,7 @@ samples <- tsasampl %>% filter(COMPL_PURP_IND_CD == "Y", #keep only samples for 
                                  paste0(as.numeric(format(Sys.Date(), "%Y")) - 5, "-01-01"))) %>% #sets date to filter until (5 years from date/year code is ran, start 1/1 of that year)
   rename(SAMPLE_DATE = COLLLECTION_END_DT) 
 
-#### TABLE 5: Generates the sampling results data (run this after running samples) ####
+#### TABLE 9: Generates the sampling results data (must run after samples) ####
 
 results <- tsasar %>% rename(RESULT = CONCENTRATION_MSR, RESULT_REPORTING_UNIT = UOM_CODE) %>%
   filter(str_detect(D_INITIAL_USERID, "ADMIN|FINDING|CLIP1\\.0"),
@@ -484,74 +517,9 @@ results <- tsasar %>% rename(RESULT = CONCENTRATION_MSR, RESULT_REPORTING_UNIT =
   dplyr::select(!c("PWSID", "FACILITY_ID", "TINWSYS_IS_NUMBER", "TINWSF_IS_NUMBER", "TSASMPPT_IS_NUMBER"))
 
 
-#### TABLE 6: Generate the analyte list and date list ####
+#### TABLE 10: Generate the water quality well ####
 
-analyte <- tsaanlyt %>% rename(ANALYTE_NAME = NAME, ANALYTE_CODE = CODE)
-
-# Generate DATE_RANGE equivalent in R (covering the last 5 years)
-date_range <- tibble(
-  dtDate = seq.Date(
-    from = as.Date(paste0(year(Sys.Date()) - 5, "-01-01")),
-    to = Sys.Date(),
-    by = "day"
-  )
-) %>%
-  mutate(
-    QUARTER = paste0(year(dtDate), "-", quarter(dtDate)) # Create Year-Quarter string
-  ) %>%
-  distinct(QUARTER) # Get distinct QUARTER values
-
-aluminum <- c("1002", "1.", 1) #1 significant figure - join this with analyte dataframe
-antimony <- c("1074", "0.006", 1) #1 significant figure - join this with analyte dataframe
-arsenic <- c("1005", "0.010", 2) #2 significant figures - join this with analyte dataframe
-asbestos <- c("1094", "7", 1) #2 significant figures - join this with analyte dataframe
-barium <- c("1010", "1.", 1) #1 significant figure - join this with analyte dataframe
-beryllium <- c("1075", "0.004", 1) #1 significant figure - join this with analyte dataframe
-cadmium <- c("1015", "0.005", 1) #1 significant figure - join this with analyte dataframe
-hexchrom <- c("1080", "0.010", 2) #2 significant figures - join this with analyte dataframe
-chromium <- c("1020", "0.05", 1) #1 significant figure - join this with analyte dataframe
-cyanide <- c("1024", "0.15", 2) #2 significant figures - join this with analyte dataframe
-fluoride <- c("1025", "2.0", 2) #2 significant figures - join this with analyte dataframe
-mercury <- c("1035", "0.002", 1) #1 significant figure - join this with analyte dataframe
-nickel <- c("1036", "0.1", 1) #1 significant figure - join this with analyte dataframe
-nitrate <- c("1040", "10", 1) #1 significant figure - join this with analyte dataframe
-nitrite <- c("1041", "1.", 1) #1 significant figure - join this with analyte dataframe
-nitratenitrite <- c("1038", "10.", 1) #1 significant figure - join this with analyte dataframe
-perchlorate <- c("1039", "0.006", 1) #1 significant figure - join this with analyte dataframe
-selenium <- c("1045", "0.05", 1) #1 significant figure - join this with analyte dataframe
-thallium <- c("1085", "0.002", 1) #1 significant figure - join this with analyte dataframe
-
-#manganese <- c("1032", "0.05", 1) #1 significant figure - join this with analyte dataframe
-
-mcl_list <- rbind(aluminum, 
-                  antimony, 
-                  arsenic, 
-                  asbestos,
-                  barium, 
-                  beryllium,
-                  cadmium,
-                  hexchrom, 
-                  chromium,
-                  cyanide,
-                  fluoride,
-                  mercury,
-                  nickel, 
-                  nitrate,
-                  nitrite,
-                  nitratenitrite,
-                  perchlorate,
-                  selenium,
-                  thallium
-                  ) %>% 
-  as.data.frame() %>% 
-  rename(ANALYTE_CODE = 1, MCL = 2, SF = 3) %>% 
-  mutate(SF = as.numeric(SF))
-
-analyte_mcl <- analyte %>% left_join(mcl_list)
-
-#### TABLE 7: Generate the water quality well ####
-
-water_quality_well <- water_system_inventory %>% 
+water_quality_well <- water_system_inventory_notp %>% 
   #left_join(water_system_sources) %>% 
   left_join(startpts) %>%
   left_join(sample_points) %>% 
@@ -559,15 +527,7 @@ water_quality_well <- water_system_inventory %>%
   left_join(results) %>%
   left_join(analyte_mcl) 
 
-#### TABLE 8: Generate the quarter table ####
-
-# Define a custom rounding function for significant figures
-round_to_sf <- function(value, sig_figs) {
-  if (is.na(value) || is.na(sig_figs) || sig_figs <= 0) {
-    return(NA)
-  }
-  round(value, digits = sig_figs - ceiling(log10(abs(value))))
-}
+#### TABLE 11: Generate the quarter table ####
 
 # Create quarter table from water quality well
 quarter_table <- water_quality_well %>%
@@ -600,10 +560,8 @@ quarter_table <- water_quality_well %>%
   ungroup() %>% # Ungroup the data to avoid issues with further processing
   mutate(QUARTER_MEAN_FINAL = ifelse(QUARTER_MEAN_COUNT > 1, QUARTER_MEAN_sf, QUARTER_MEAN)) #check this decision w/ KN
 
-#### TABLE 9: Generate the quarter table pre ####
+#### TABLE 12: Generate the quarter table pre ####
 
-# Left join the expanded table with the original data to "fill in" missing rows
-# WON'T WORK WITH THE iGRAPH package! somthing about crossing()
 quarter_table_pre <- quarter_table %>%
   distinct(PWSID, POPULATION, FACILITY_ID, ANALYTE_NAME, ANALYTE_CODE) %>% # Get unique combinations
   crossing(date_range) %>% # Add all QUARTER values from `date_range`
@@ -621,7 +579,7 @@ quarter_table_pre <- quarter_table %>%
 max_row_number <- quarter_table_pre %>% group_by(FACILITY_ID, ANALYTE_NAME) %>%
   summarize(MAX_RN = max(RN), .groups = "drop")
 
-#### TABLE 10: Generate the cacl raa table ####
+#### TABLE 13: Generate the RAA table for each quarter ####
 
 calc_raa <- quarter_table_pre %>%
   left_join(analyte_mcl %>% select(ANALYTE_CODE, SF)) %>%
@@ -641,13 +599,14 @@ calc_raa <- quarter_table_pre %>%
     RAA = if_else(!is.na(SF), round_to_sf(RAA, SF), RAA)
   )
 
-#### TABLE 11: Find the most recent quartet with RAA ####
+#### TABLE 14: Generate most recent quarter with RAA for each facility and analyte ####
+
 qtr_result <-  calc_raa %>%
   mutate(QUARTER_SORT = as.numeric(gsub("-", ".", QUARTER))) %>%  # Convert QUARTER to numeric for sorting
   arrange(desc(QUARTER_SORT)) %>%
   filter(!is.na(QUARTER_MEAN_FINAL)) %>%
   ungroup() %>%
-  group_by(ANALYTE_CODE) %>%
+  group_by(ANALYTE_CODE, FACILITY_ID) %>% #THIS WAS A BIG CHANGE - did you do it correctly?
   slice(1) %>% #somehow you need to know how many to slice (or like sort by analyte and always just grab the earliest result?)
   select(-QUARTER_SORT) %>% # Remove the temporary column 
   left_join(analyte_mcl %>% 
@@ -664,39 +623,17 @@ qtr_result <-  calc_raa %>%
               filter(str_trim(RESULT_REPORTING_UNIT) != "") %>% 
               distinct()) #why are there 17? aren't there like 599 water systems? Maybe most of them are doing okay?
 
-#### CONVERT UOM ####
-  
-convert_units <- function(value, from, to) {
-  # standardize text
-  from <- toupper(trimws(from))
-  to   <- toupper(trimws(to))
-  
-  # no conversion needed
-  if (from == to) return(value)
-  
-  # mg/L ↔ ug/L
-  if (from == "MG/L" && to == "UG/L") return(value * 1000)
-  if (from == "UG/L" && to == "MG/L") return(value / 1000)
-  
-  # ug/L ↔ ng/L
-  if (from == "UG/L" && to == "NG/L") return(value * 1000)
-  if (from == "NG/L" && to == "UG/L") return(value / 1000)
-  
-  # mg/L ↔ ng/L
-  if (from == "MG/L" && to == "NG/L") return(value * 1e6)
-  if (from == "NG/L" && to == "MG/L") return(value / 1e6)
-  
-  stop(paste("Conversion not implemented for", from, "to", to))
-}
 
   
-#### Convert MCL Units ####
+#### TABLE 15: Convert MCL to correct UOM ####
+
 qtr_result_uom <- qtr_result %>% mutate(MCL_NUM = as.numeric(MCL)) #I'm definitely messing up SF here - when to convert? But once you get it right it should be fine
 qtr_result_uom$MCL_converted <- mapply(convert_units, 
                            value = qtr_result_uom$MCL_NUM, 
                            from  = qtr_result_uom$UOM_MCL, 
                            to    = qtr_result_uom$RESULT_REPORTING_UNIT)
 
-#### Flag violations ####
+#### TABLE 16: Generate violation flags ####
+
 qtr_result_violation <- qtr_result_uom %>% 
   mutate(exceed = ifelse(RAA > MCL_converted, 1, 0)) #seems to be working reasonably well 
